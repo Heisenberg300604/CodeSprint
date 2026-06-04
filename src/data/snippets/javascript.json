@@ -1,0 +1,7 @@
+{
+  "language": "javascript",
+  "difficulty": "beginner",
+  "snippets": [
+    "console.log(\"Hello\");"
+  ]
+}

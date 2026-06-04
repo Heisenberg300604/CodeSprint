@@ -1,0 +1,7 @@
+{
+  "language": "python",
+  "difficulty": "beginner",
+  "snippets": [
+    "def hello():\n    print(\"Hello\")"
+  ]
+}
