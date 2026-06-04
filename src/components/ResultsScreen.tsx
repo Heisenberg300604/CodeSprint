@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { RotateCcw, Play } from 'lucide-react';
+import { RotateCcw, Play, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 interface ResultsScreenProps {
   wpm: number;
@@ -9,9 +10,19 @@ interface ResultsScreenProps {
   errors: number;
   totalTyped: number;
   duration: number;
+  language: string;
   isNewPersonalBest: boolean;
   onRetry: () => void;
   onNewTest: () => void;
+}
+
+function MetricCard({ label, value, valueClassName = "" }: { label: string, value: string | number, valueClassName?: string }) {
+  return (
+    <div className="bg-[#111827] border border-[#1F2937] rounded-xl p-6 flex flex-col items-center justify-center gap-2">
+      <div className="text-[#94A3B8] text-xs font-semibold tracking-wider uppercase">{label}</div>
+      <div className={`text-white text-3xl font-bold font-mono ${valueClassName}`}>{value}</div>
+    </div>
+  );
 }
 
 export function ResultsScreen({
@@ -20,6 +31,7 @@ export function ResultsScreen({
   errors,
   totalTyped,
   duration,
+  language,
   isNewPersonalBest,
   onRetry,
   onNewTest
@@ -30,90 +42,66 @@ export function ResultsScreen({
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="w-full h-[400px] flex flex-col items-center justify-center bg-surface border border-border rounded-xl p-8"
+      className="flex flex-col items-center justify-center w-full min-h-[400px] gap-8 bg-[#060B14]"
       data-testid="results-screen"
     >
-      <div className="text-center mb-8 relative">
-        <motion.div 
-          initial={{ y: 10, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="text-sm font-semibold tracking-widest text-secondary-text uppercase mb-2"
-        >
-          WPM
-        </motion.div>
-        
-        <motion.div 
-          initial={{ y: 10, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="text-8xl font-mono font-bold text-accent"
-          data-testid="results-wpm"
-        >
-          {wpm}
-        </motion.div>
-
-        {isNewPersonalBest && (
-          <motion.div 
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.4, type: "spring" }}
-            className="absolute -top-4 -right-12 bg-warning/20 text-warning px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap border border-warning/30 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
-            data-testid="new-best-badge"
-          >
-            NEW BEST
-          </motion.div>
-        )}
+      {/* 1. Header Badges */}
+      <div className="flex items-center gap-4">
+        <Badge variant="outline" className="border-[#1F2937] text-[#94A3B8]">
+          {`</> ${language}`}
+        </Badge>
+        <Badge variant="outline" className="border-[#1F2937] text-[#94A3B8]">
+          {duration}s
+        </Badge>
       </div>
 
-      <motion.div 
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.3 }}
-        className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full max-w-2xl mb-10"
-      >
-        <div className="bg-secondary-bg border border-border rounded-lg p-4 text-center">
-          <div className="text-[10px] tracking-wider text-secondary-text uppercase mb-1">Accuracy</div>
-          <div className="text-2xl font-mono text-primary-text">{accuracy}%</div>
+      {/* 2. Personal Best Pill (Conditional) */}
+      {isNewPersonalBest && (
+        <div className="flex items-center gap-2 px-4 py-1.5 rounded-full border border-orange-500/30 text-orange-400 bg-orange-500/10 text-sm font-medium">
+          <Zap className="w-4 h-4" />
+          <span>NEW PERSONAL BEST</span>
         </div>
-        <div className="bg-secondary-bg border border-border rounded-lg p-4 text-center">
-          <div className="text-[10px] tracking-wider text-secondary-text uppercase mb-1">CPM</div>
-          <div className="text-2xl font-mono text-primary-text">{cpm}</div>
-        </div>
-        <div className="bg-secondary-bg border border-border rounded-lg p-4 text-center">
-          <div className="text-[10px] tracking-wider text-secondary-text uppercase mb-1">Errors</div>
-          <div className="text-2xl font-mono text-error">{errors}</div>
-        </div>
-        <div className="bg-secondary-bg border border-border rounded-lg p-4 text-center">
-          <div className="text-[10px] tracking-wider text-secondary-text uppercase mb-1">Characters</div>
-          <div className="text-2xl font-mono text-primary-text">{totalTyped}</div>
-        </div>
-      </motion.div>
+      )}
 
-      <motion.div 
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.4 }}
-        className="flex items-center gap-4"
-      >
-        <Button 
-          variant="outline" 
-          onClick={onRetry}
-          className="bg-secondary-bg border-border text-primary-text hover:bg-surface hover:text-accent font-mono"
-          data-testid="btn-retry"
-        >
-          <RotateCcw className="w-4 h-4 mr-2" />
-          Retry Test
+      {/* 3. Main WPM Display */}
+      <div className="flex flex-col items-center relative my-8">
+        {/* Background Glow */}
+        <div className="absolute inset-0 bg-[#22D3EE] opacity-10 blur-[60px] rounded-full" />
+        <h1 className="text-[120px] leading-none font-bold text-[#22D3EE] tracking-tighter drop-shadow-lg z-10 font-mono">
+          {wpm}
+        </h1>
+        <p className="text-[#94A3B8] tracking-[0.3em] text-sm font-medium mt-4">
+          WORDS PER MINUTE
+        </p>
+      </div>
+
+      {/* 4. Metrics Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full max-w-3xl">
+        <MetricCard label="ACCURACY" value={`${accuracy}%`} />
+        <MetricCard label="CPM" value={cpm} />
+        <MetricCard label="ERRORS" value={errors} valueClassName="text-[#EF4444]" />
+        <MetricCard label="CHARS TYPED" value={totalTyped} />
+      </div>
+
+      {/* 5. Action Buttons */}
+      <div className="flex items-center gap-4 mt-8">
+        <Button variant="outline" onClick={onRetry} className="bg-transparent border-[#1F2937] hover:bg-[#111827] text-white">
+          <RotateCcw className="w-4 h-4 mr-2" /> Retry
         </Button>
-        <Button 
-          onClick={onNewTest}
-          className="bg-accent text-[#060B14] hover:bg-accent/90 font-mono font-semibold"
-          data-testid="btn-new-test"
-        >
-          <Play className="w-4 h-4 mr-2" />
-          New Test
+        <Button onClick={onNewTest} className="bg-[#22D3EE] text-[#060B14] hover:bg-[#22D3EE]/90">
+          <Play className="w-4 h-4 mr-2" /> New Test
         </Button>
-      </motion.div>
+      </div>
+
+      {/* 6. Footer Hints */}
+      <div className="flex items-center gap-2 text-[#94A3B8] text-sm mt-8">
+        <span>Press</span>
+        <kbd className="px-2 py-1 bg-[#111827] border border-[#1F2937] rounded-md font-mono text-xs">Tab</kbd>
+        <span>for new test</span>
+        <span className="mx-2">·</span>
+        <kbd className="px-2 py-1 bg-[#111827] border border-[#1F2937] rounded-md font-mono text-xs">Esc</kbd>
+        <span>to retry</span>
+      </div>
     </motion.div>
   );
 }

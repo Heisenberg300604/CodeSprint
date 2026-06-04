@@ -57,13 +57,10 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     setTestState('FINISHED');
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     
-    let correctCount = 0;
-    snippet.forEach((char, i) => {
-      if (typedChars[i] === char) correctCount++;
-    });
-    
-    const minutesElapsed = (duration - timeLeft) / 60 || (duration / 60);
-    const finalWpm = Math.max(0, Math.round((correctCount / 5) / minutesElapsed));
+    const timeInMinutes = (duration - timeLeft) / 60 || (duration / 60);
+    const grossWpm = (totalTyped / 5) / timeInMinutes;
+    const uncorrectedErrorsPerMinute = errors / timeInMinutes;
+    const finalWpm = Math.max(0, Math.round(grossWpm - uncorrectedErrorsPerMinute));
     setWpm(finalWpm);
     
     const key = `${language}-${difficulty}`;
@@ -98,15 +95,13 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     if (testState === 'RUNNING' && startTimeRef.current) {
       const interval = setInterval(() => {
         const elapsedMinutes = (Date.now() - startTimeRef.current!) / 60000;
-        let correctCount = 0;
-        snippet.forEach((char, i) => {
-          if (i < typedChars.length && typedChars[i] === char) correctCount++;
-        });
-        setWpm(Math.max(0, Math.round((correctCount / 5) / (elapsedMinutes || 0.01))));
+        const grossWpm = (totalTyped / 5) / (elapsedMinutes || 0.01);
+        const uncorrectedErrorsPerMinute = errors / (elapsedMinutes || 0.01);
+        setWpm(Math.max(0, Math.round(grossWpm - uncorrectedErrorsPerMinute)));
       }, 500);
       return () => clearInterval(interval);
     }
-  }, [testState, snippet, typedChars]);
+  }, [testState, totalTyped, errors]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (testState === 'FINISHED') return;
@@ -115,7 +110,14 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     
     if (key === 'Tab') {
       e.preventDefault();
-      loadSnippet();
+      // Insert 2 spaces on Tab
+      for (let i = 0; i < 2; i++) {
+        if (snippet[currentIndex + i] === ' ') {
+          setTypedChars(prev => [...prev, ' ']);
+          setCurrentIndex(prev => prev + 1);
+          setTotalTyped(prev => prev + 1);
+        }
+      }
       return;
     }
     

@@ -101,6 +101,7 @@ export default function CodeSprintApp() {
             errors={errors}
             totalTyped={totalTyped}
             duration={duration}
+            language={language}
             isNewPersonalBest={isNewPersonalBest}
             onRetry={restart}
             onNewTest={newTest}
