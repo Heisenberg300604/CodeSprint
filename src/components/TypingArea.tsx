@@ -6,14 +6,18 @@ interface TypingAreaProps {
   snippet: string[];
   typedChars: string[];
   currentIndex: number;
+  activeLine: number;
   testState: TestState;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
-export function TypingArea({ snippet, typedChars, currentIndex, testState, onKeyDown }: TypingAreaProps) {
+// Height of one line in px — must match leading-[2] at text-[18px]
+const LINE_HEIGHT_PX = 40;
+// How many completed lines to keep visible above the active line
+const LINES_ABOVE = 2;
+
+export function TypingArea({ snippet, typedChars, currentIndex, activeLine, testState, onKeyDown }: TypingAreaProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const activeCharRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (testState !== 'FINISHED') {
@@ -21,78 +25,126 @@ export function TypingArea({ snippet, typedChars, currentIndex, testState, onKey
     }
   }, [testState]);
 
-  useEffect(() => {
-    // Keep active character in view
-    if (activeCharRef.current && containerRef.current) {
-      activeCharRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    }
-  }, [currentIndex]);
-
   const handleContainerClick = () => {
     inputRef.current?.focus();
   };
 
-  const renderedSnippet = useMemo(() => {
-    return snippet.map((char, index) => {
-      let stateClass = "text-secondary-text"; // PENDING
-      
-      if (index < typedChars.length) {
-        if (typedChars[index] === char) {
-          stateClass = "text-primary-text drop-shadow-[0_0_8px_rgba(248,250,252,0.1)]"; // CORRECT
-        } else {
-          stateClass = "text-error border-b border-error bg-error/10"; // INCORRECT
-        }
+  // Split snippet into lines for rendering
+  const lines = useMemo(() => {
+    const result: Array<{ chars: string[]; startIndex: number }> = [];
+    let currentLine: string[] = [];
+    let lineStart = 0;
+
+    snippet.forEach((char, i) => {
+      if (char === '\n') {
+        result.push({ chars: currentLine, startIndex: lineStart });
+        currentLine = [];
+        lineStart = i + 1;
+      } else {
+        currentLine.push(char);
       }
+    });
+    if (currentLine.length > 0 || snippet.length === 0) {
+      result.push({ chars: currentLine, startIndex: lineStart });
+    }
+    return result;
+  }, [snippet]);
 
-      const isCursor = index === currentIndex && testState !== 'FINISHED';
+  // translateY so the active line sits at a fixed vertical position
+  // We offset by (activeLine - LINES_ABOVE) lines, clamped at 0
+  const translateY = -Math.max(0, activeLine - LINES_ABOVE) * LINE_HEIGHT_PX;
 
-      // Replace newline with return symbol visually, but actually render a break
-      const isNewline = char === '\n';
-      const displayChar = isNewline ? '↵\n' : char;
+  const renderedLines = useMemo(() => {
+    return lines.map((line, lineIdx) => {
+      const lineChars = line.chars.map((char, charOffset) => {
+        const absoluteIdx = line.startIndex + charOffset;
+        let stateClass = 'text-secondary-text'; // pending
+
+        if (absoluteIdx < typedChars.length) {
+          stateClass =
+            typedChars[absoluteIdx] === char
+              ? 'text-primary-text'   // correct
+              : 'text-error bg-error/10 border-b border-error'; // wrong
+        }
+
+        const isCursor = absoluteIdx === currentIndex && testState !== 'FINISHED';
+
+        return (
+          <span
+            key={absoluteIdx}
+            className={cn(
+              'relative',
+              stateClass,
+              isCursor &&
+                'before:absolute before:left-0 before:top-0 before:w-[2px] before:h-full before:bg-accent before:animate-cursor-blink',
+            )}
+          >
+            {char}
+          </span>
+        );
+      });
+
+      // Newline character at end of line (except last line)
+      const newlineIdx = line.startIndex + line.chars.length;
+      const isNewlineCursor = newlineIdx === currentIndex && testState !== 'FINISHED' && lineIdx < lines.length - 1;
 
       return (
-        <span
-          key={index}
-          ref={isCursor ? activeCharRef : null}
-          className={cn(
-            "relative",
-            stateClass,
-            isCursor && "before:absolute before:left-0 before:bottom-0 before:w-[2px] before:h-full before:bg-accent before:animate-cursor-blink",
-            isCursor && isNewline && "before:left-auto before:right-0" // place cursor after symbol on newline
-          )}
+        <div
+          key={lineIdx}
+          className="relative whitespace-pre flex items-center"
+          style={{ height: LINE_HEIGHT_PX, lineHeight: `${LINE_HEIGHT_PX}px` }}
         >
-          {displayChar}
-        </span>
+          {lineChars}
+          {lineIdx < lines.length - 1 && (
+            <span
+              className={cn(
+                'relative text-secondary-text/30 select-none ml-0.5',
+                isNewlineCursor &&
+                  'before:absolute before:left-0 before:top-0 before:w-[2px] before:h-full before:bg-accent before:animate-cursor-blink',
+              )}
+            >
+              ↵
+            </span>
+          )}
+        </div>
       );
     });
-  }, [snippet, typedChars, currentIndex, testState]);
+  }, [lines, typedChars, currentIndex, testState]);
 
   return (
-    <div 
+    <div
       className={cn(
-        "relative w-full rounded-xl bg-surface border border-border overflow-hidden transition-shadow duration-300",
-        testState === 'RUNNING' && "ring-1 ring-accent ring-opacity-20 shadow-[0_0_30px_rgba(34,211,238,0.05)]"
+        'relative w-full rounded-xl bg-surface border border-border overflow-hidden transition-shadow duration-300',
+        testState === 'RUNNING' && 'ring-1 ring-accent/20 shadow-[0_0_30px_rgba(34,211,238,0.05)]',
       )}
       onClick={handleContainerClick}
       data-testid="typing-area"
     >
-      {/* macOS dots */}
-      <div className="absolute top-0 left-0 w-full h-10 bg-surface/50 border-b border-border flex items-center px-4 gap-2 select-none">
+      {/* macOS window bar */}
+      <div className="absolute top-0 left-0 w-full h-10 bg-surface/50 border-b border-border flex items-center px-4 gap-2 select-none z-10">
         <div className="w-3 h-3 rounded-full bg-error/80" />
         <div className="w-3 h-3 rounded-full bg-warning/80" />
         <div className="w-3 h-3 rounded-full bg-success/80" />
       </div>
 
-      <div 
-        ref={containerRef}
-        className="pt-16 pb-8 px-8 h-[400px] overflow-y-auto overflow-x-hidden font-mono text-[20px] leading-[1.8] whitespace-pre-wrap break-all tracking-wide select-none"
+      {/* Fixed-height viewport — no scrollbar */}
+      <div
+        className="pt-14 pb-4 px-8 overflow-hidden select-none"
+        style={{ height: 400 }}
       >
-        {renderedSnippet}
+        {/* Inner block slides up via translateY */}
+        <div
+          style={{
+            transform: `translateY(${translateY}px)`,
+            transition: 'transform 150ms ease',
+          }}
+          className="font-mono text-[18px] tracking-wide"
+        >
+          {renderedLines}
+        </div>
       </div>
 
+      {/* Hidden focus sink */}
       <textarea
         ref={inputRef}
         className="absolute top-0 left-0 w-0 h-0 opacity-0 pointer-events-none"
@@ -105,7 +157,7 @@ export function TypingArea({ snippet, typedChars, currentIndex, testState, onKey
         autoCapitalize="off"
         autoComplete="off"
         autoCorrect="off"
-        spellCheck="false"
+        spellCheck={false}
         data-testid="hidden-input"
       />
     </div>

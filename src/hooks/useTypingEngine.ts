@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { TestState, TypingEngineReturn, Difficulty, Duration } from '../types';
 import { Language } from '../constants';
-import { SNIPPETS } from '../data/snippets';
+import { SNIPPETS } from '../data/snippets/index';
 
 interface UseTypingEngineProps {
   language: Language;
@@ -9,70 +9,148 @@ interface UseTypingEngineProps {
   duration: Duration;
 }
 
+// ─── Snippet History (session-level anti-repeat) ─────────────────────────────
+const SESSION_KEY = (lang: Language, diff: Difficulty) => `cs-used-${lang}-${diff}`;
+
+function getUsedIndexes(lang: Language, diff: Difficulty): number[] {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY(lang, diff));
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function setUsedIndexes(lang: Language, diff: Difficulty, indexes: number[]): void {
+  try {
+    sessionStorage.setItem(SESSION_KEY(lang, diff), JSON.stringify(indexes));
+  } catch {
+    // sessionStorage unavailable — degrade gracefully
+  }
+}
+
+function pickSnippet(lang: Language, diff: Difficulty): { text: string; index: number } {
+  const list = SNIPPETS[lang][diff];
+  const pool = list.length;
+  let used = getUsedIndexes(lang, diff);
+
+  // Reset history when the whole pool has been shown
+  if (used.length >= pool) {
+    used = [];
+    setUsedIndexes(lang, diff, []);
+  }
+
+  const available = Array.from({ length: pool }, (_, i) => i).filter(i => !used.includes(i));
+  const idx = available[Math.floor(Math.random() * available.length)];
+
+  setUsedIndexes(lang, diff, [...used, idx]);
+  return { text: list[idx], index: idx };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function computeActiveLine(snippet: string[], currentIndex: number): number {
+  let line = 0;
+  for (let i = 0; i < currentIndex && i < snippet.length; i++) {
+    if (snippet[i] === '\n') line++;
+  }
+  return line;
+}
+
+// ─── Hook ────────────────────────────────────────────────────────────────────
 export function useTypingEngine({ language, difficulty, duration }: UseTypingEngineProps): TypingEngineReturn {
   const [testState, setTestState] = useState<TestState>('IDLE');
   const [snippet, setSnippet] = useState<string[]>([]);
   const [typedChars, setTypedChars] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [wpm, setWpm] = useState<number>(0);
+  const [grossWpm, setGrossWpm] = useState<number>(0);
   const [accuracy, setAccuracy] = useState<number>(100);
   const [timeLeft, setTimeLeft] = useState<number>(duration);
   const [errors, setErrors] = useState<number>(0);
   const [totalTyped, setTotalTyped] = useState<number>(0);
+  const [activeLine, setActiveLine] = useState<number>(0);
   const [personalBest, setPersonalBest] = useState<number | null>(null);
   const [isNewPersonalBest, setIsNewPersonalBest] = useState<boolean>(false);
 
   const startTimeRef = useRef<number | null>(null);
+  const endTimeRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<number | null>(null);
+  // Refs for endTest closure — avoids stale state captures
+  const totalTypedRef = useRef<number>(0);
+  const errorsRef = useRef<number>(0);
 
-  const loadSnippet = useCallback(() => {
-    const list = SNIPPETS[language][difficulty];
-    const text = list[Math.floor(Math.random() * list.length)];
-    setSnippet(text.split(''));
+  // Keep refs in sync with state
+  useEffect(() => { totalTypedRef.current = totalTyped; }, [totalTyped]);
+  useEffect(() => { errorsRef.current = errors; }, [errors]);
+
+  // ── Reset shared state ──────────────────────────────────────────────────
+  const resetState = useCallback(() => {
     setTypedChars([]);
     setCurrentIndex(0);
     setWpm(0);
+    setGrossWpm(0);
     setAccuracy(100);
     setTimeLeft(duration);
     setErrors(0);
     setTotalTyped(0);
-    setTestState('IDLE');
+    setActiveLine(0);
     setIsNewPersonalBest(false);
+    setTestState('IDLE');
+    totalTypedRef.current = 0;
+    errorsRef.current = 0;
     startTimeRef.current = null;
+    endTimeRef.current = null;
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-  }, [language, difficulty, duration]);
+  }, [duration]);
+
+  // ── Load snippet ────────────────────────────────────────────────────────
+  const loadSnippet = useCallback(() => {
+    const { text } = pickSnippet(language, difficulty);
+    setSnippet(text.split(''));
+    resetState();
+  }, [language, difficulty, resetState]);
 
   useEffect(() => {
     loadSnippet();
   }, [loadSnippet]);
 
+  // ── Personal Best ───────────────────────────────────────────────────────
   useEffect(() => {
     const key = `${language}-${difficulty}`;
     const best = localStorage.getItem(key);
-    if (best) setPersonalBest(parseFloat(best));
-    else setPersonalBest(null);
+    setPersonalBest(best ? parseFloat(best) : null);
   }, [language, difficulty]);
 
+  // ── End test ────────────────────────────────────────────────────────────
   const endTest = useCallback(() => {
     setTestState('FINISHED');
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    
-    const timeInMinutes = (duration - timeLeft) / 60 || (duration / 60);
-    const grossWpm = (totalTyped / 5) / timeInMinutes;
-    const uncorrectedErrorsPerMinute = errors / timeInMinutes;
-    const finalWpm = Math.max(0, Math.round(grossWpm - uncorrectedErrorsPerMinute));
-    setWpm(finalWpm);
-    
+
+    const elapsed = startTimeRef.current
+      ? (Date.now() - startTimeRef.current) / 60000
+      : duration / 60;
+
+    const total = totalTypedRef.current;
+    const errs = errorsRef.current;
+
+    // Gross WPM: total chars / 5 / elapsed
+    const gross = Math.max(0, Math.round((total / 5) / elapsed));
+    // Net WPM: correct chars / 5 / elapsed  (correct = total - errors)
+    const net = Math.max(0, Math.round(((total - errs) / 5) / elapsed));
+
+    setGrossWpm(gross);
+    setWpm(net);
+
     const key = `${language}-${difficulty}`;
     const currentBest = localStorage.getItem(key);
-    
-    if (!currentBest || finalWpm > parseFloat(currentBest)) {
-      localStorage.setItem(key, finalWpm.toString());
-      setPersonalBest(finalWpm);
+    if (!currentBest || net > parseFloat(currentBest)) {
+      localStorage.setItem(key, net.toString());
+      setPersonalBest(net);
       setIsNewPersonalBest(true);
     }
-  }, [snippet, typedChars, duration, timeLeft, language, difficulty]);
+  }, [duration, language, difficulty]);
 
+  // ── Countdown timer ─────────────────────────────────────────────────────
   useEffect(() => {
     if (testState === 'RUNNING') {
       timerIntervalRef.current = window.setInterval(() => {
@@ -90,130 +168,143 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     }
   }, [testState, endTest]);
 
-  // Real-time WPM updater
+  // ── Real-time WPM (Gross, updated every 300ms) ──────────────────────────
   useEffect(() => {
     if (testState === 'RUNNING' && startTimeRef.current) {
       const interval = setInterval(() => {
-        const elapsedMinutes = (Date.now() - startTimeRef.current!) / 60000;
-        const grossWpm = (totalTyped / 5) / (elapsedMinutes || 0.01);
-        const uncorrectedErrorsPerMinute = errors / (elapsedMinutes || 0.01);
-        setWpm(Math.max(0, Math.round(grossWpm - uncorrectedErrorsPerMinute)));
-      }, 500);
+        const elapsed = (Date.now() - startTimeRef.current!) / 60000;
+        const total = totalTypedRef.current;
+        const gross = Math.max(0, Math.round((total / 5) / (elapsed || 0.001)));
+        setGrossWpm(gross);
+        // Live WPM display is Gross (MonkeyType convention)
+        setWpm(gross);
+      }, 300);
       return () => clearInterval(interval);
     }
-  }, [testState, totalTyped, errors]);
+  }, [testState]);
 
+  // ── Key handler ─────────────────────────────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (testState === 'FINISHED') return;
-    
+
     const { key } = e;
-    
+
+    // Tab: smart indentation — consume leading spaces on current line
     if (key === 'Tab') {
       e.preventDefault();
-      // Insert 2 spaces on Tab
-      for (let i = 0; i < 2; i++) {
-        if (snippet[currentIndex + i] === ' ') {
-          setTypedChars(prev => [...prev, ' ']);
-          setCurrentIndex(prev => prev + 1);
-          setTotalTyped(prev => prev + 1);
-        }
+      if (testState === 'IDLE') {
+        setTestState('RUNNING');
+        startTimeRef.current = Date.now();
+      }
+      // Try to match up to 4 leading spaces at the current position
+      let consumed = 0;
+      for (let i = 0; i < 4 && snippet[currentIndex + i] === ' '; i++) {
+        consumed++;
+      }
+      if (consumed > 0) {
+        setTypedChars(prev => [...prev, ...Array(consumed).fill(' ')]);
+        setCurrentIndex(prev => {
+          const next = prev + consumed;
+          setActiveLine(computeActiveLine(snippet, next));
+          return next;
+        });
+        setTotalTyped(prev => prev + consumed);
+        totalTypedRef.current += consumed;
       }
       return;
     }
-    
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && key.toLowerCase() === 'r') {
-      e.preventDefault();
-      setTypedChars([]);
-      setCurrentIndex(0);
-      setTestState('IDLE');
-      setTimeLeft(duration);
-      setErrors(0);
-      setTotalTyped(0);
-      startTimeRef.current = null;
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-      return;
-    }
 
+    // Escape: reset to IDLE with same snippet
     if (key === 'Escape') {
       e.preventDefault();
-      setTypedChars([]);
-      setCurrentIndex(0);
-      setTestState('IDLE');
-      setTimeLeft(duration);
-      setErrors(0);
-      setTotalTyped(0);
-      startTimeRef.current = null;
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      resetState();
       return;
     }
-    
-    // Ignore meta/control keys that are not characters
+
+    // Ctrl/Cmd+Shift+R: new snippet
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && key.toLowerCase() === 'r') {
+      e.preventDefault();
+      loadSnippet();
+      return;
+    }
+
+    // Ignore modifier-only combos
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (key.length > 1 && key !== 'Backspace' && key !== 'Enter') return;
-    
+
     e.preventDefault();
 
+    // Start test on first real keystroke
     if (testState === 'IDLE') {
       setTestState('RUNNING');
       startTimeRef.current = Date.now();
     }
-    
+
     if (key === 'Backspace') {
       if (currentIndex > 0) {
         setTypedChars(prev => prev.slice(0, -1));
-        setCurrentIndex(prev => prev - 1);
+        setCurrentIndex(prev => {
+          const next = prev - 1;
+          setActiveLine(computeActiveLine(snippet, next));
+          return next;
+        });
+        // Note: we do NOT decrement totalTyped — errors on deleted chars
+        // were never counted; backspace doesn't "uncorrect" WPM in Monkeytype style.
       }
       return;
     }
-    
+
     if (key === 'Enter') {
       if (snippet[currentIndex] === '\n') {
         setTypedChars(prev => [...prev, '\n']);
-        setCurrentIndex(prev => prev + 1);
+        setCurrentIndex(prev => {
+          const next = prev + 1;
+          setActiveLine(computeActiveLine(snippet, next));
+          return next;
+        });
         setTotalTyped(prev => prev + 1);
+        totalTypedRef.current += 1;
       }
       return;
     }
 
-    // Normal char typed
+    // Normal character
     const expectedChar = snippet[currentIndex];
-    if (!expectedChar) return; // end of snippet reached before time
-    
+    if (!expectedChar) return;
+
     const isCorrect = key === expectedChar;
-    
+
     setTypedChars(prev => [...prev, key]);
-    setCurrentIndex(prev => prev + 1);
+    setCurrentIndex(prev => {
+      const next = prev + 1;
+      setActiveLine(computeActiveLine(snippet, next));
+      return next;
+    });
     setTotalTyped(prev => prev + 1);
-    
+    totalTypedRef.current += 1;
+
     if (!isCorrect) {
       setErrors(prev => prev + 1);
+      errorsRef.current += 1;
     }
-    
-    setAccuracy(prev => {
-      let correct = 0;
-      const newTyped = [...typedChars, key];
-      snippet.forEach((c, i) => {
-        if (i < newTyped.length && newTyped[i] === c) correct++;
-      });
-      return Math.round((correct / (totalTyped + 1)) * 100);
+
+    // Recalculate accuracy: correct chars / total chars typed
+    setAccuracy(() => {
+      const total = totalTypedRef.current;
+      const errs = errorsRef.current;
+      return total > 0 ? Math.round(((total - errs) / total) * 100) : 100;
     });
 
+    // Completed the entire snippet before timer ends
     if (currentIndex + 1 === snippet.length) {
       endTest();
     }
+  }, [currentIndex, snippet, testState, loadSnippet, resetState, endTest]);
 
-  }, [currentIndex, snippet, testState, loadSnippet, duration, endTest, typedChars, totalTyped]);
-
+  // ── Restart (same snippet) ──────────────────────────────────────────────
   const restart = useCallback(() => {
-    setTypedChars([]);
-    setCurrentIndex(0);
-    setTestState('IDLE');
-    setTimeLeft(duration);
-    setErrors(0);
-    setTotalTyped(0);
-    startTimeRef.current = null;
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-  }, [duration]);
+    resetState();
+  }, [resetState]);
 
   return {
     testState,
@@ -221,14 +312,16 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     typedChars,
     currentIndex,
     wpm,
+    grossWpm,
     accuracy,
     timeLeft,
     errors,
     totalTyped,
+    activeLine,
     handleKeyDown,
     restart,
     newTest: loadSnippet,
     personalBest,
-    isNewPersonalBest
+    isNewPersonalBest,
   };
 }

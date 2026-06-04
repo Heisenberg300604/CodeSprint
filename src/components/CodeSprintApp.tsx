@@ -18,10 +18,12 @@ export default function CodeSprintApp() {
     typedChars,
     currentIndex,
     wpm,
+    grossWpm,
     accuracy,
     timeLeft,
     errors,
     totalTyped,
+    activeLine,
     handleKeyDown,
     restart,
     newTest,
@@ -32,21 +34,21 @@ export default function CodeSprintApp() {
     duration
   });
 
-  // Handle global shortcuts that shouldn't be caught by textarea (or when textarea isn't focused)
+  // Global shortcuts — active when textarea loses focus or on results screen
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Tab') {
         e.preventDefault();
+        // Tab loads a new test only from IDLE/FINISHED
         if (testState === 'IDLE' || testState === 'FINISHED') {
           newTest();
         }
       }
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && testState === 'FINISHED') {
         e.preventDefault();
         restart();
       }
     };
-    
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [testState, newTest, restart]);
@@ -90,6 +92,7 @@ export default function CodeSprintApp() {
               snippet={snippet}
               typedChars={typedChars}
               currentIndex={currentIndex}
+              activeLine={activeLine}
               testState={testState}
               onKeyDown={handleKeyDown as any}
             />
