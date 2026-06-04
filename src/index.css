@@ -1,1 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
 @import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-secondary-bg: var(--secondary-bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-primary-text: var(--primary-text);
+  --color-secondary-text: var(--secondary-text);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-error: var(--error);
+  --color-warning: var(--warning);
+
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --animate-cursor-blink: cursor-blink 1s step-end infinite;
+
+  @keyframes cursor-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+}
+
+:root {
+  --background: #060B14;
+  --secondary-bg: #0E1525;
+  --surface: #111827;
+  --border: #1F2937;
+  --primary-text: #F8FAFC;
+  --secondary-text: #94A3B8;
+  --accent: #22D3EE;
+  --success: #22C55E;
+  --error: #EF4444;
+  --warning: #F59E0B;
+}
+
+.dark {
+  --background: #060B14;
+  --secondary-bg: #0E1525;
+  --surface: #111827;
+  --border: #1F2937;
+  --primary-text: #F8FAFC;
+  --secondary-text: #94A3B8;
+  --accent: #22D3EE;
+  --success: #22C55E;
+  --error: #EF4444;
+  --warning: #F59E0B;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--background);
+    color: var(--primary-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

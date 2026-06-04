@@ -1,7 +1,0 @@
-{
-  "language": "cpp",
-  "difficulty": "beginner",
-  "snippets": [
-    "#include <iostream>\nint main() { std::cout << \"Hello\"; return 0; }"
-  ]
-}
