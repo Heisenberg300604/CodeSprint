@@ -1,4 +1,5 @@
 import React from 'react';
+import { usePostHog } from '@posthog/react';
 import { motion } from 'framer-motion';
 import { RotateCcw, Play, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -38,8 +39,27 @@ export function ResultsScreen({
   onRetry,
   onNewTest
 }: ResultsScreenProps) {
+  const posthog = usePostHog();
   const cpm = Math.round((totalTyped / duration) * 60) || 0;
   const snippetsCompleted = snippetCount + 1; // +1 for the snippet that was in progress when time expired
+
+  const handleRetry = () => {
+    posthog?.capture('test_restarted', {
+      language,
+      duration,
+      wpm,
+      accuracy,
+    });
+    onRetry();
+  };
+
+  const handleNewTest = () => {
+    posthog?.capture('new_test_loaded', {
+      language,
+      duration,
+    });
+    onNewTest();
+  };
 
   return (
     <motion.div
@@ -96,14 +116,14 @@ export function ResultsScreen({
       <div className="flex items-center gap-3 mt-4">
         <Button
           variant="outline"
-          onClick={onRetry}
+          onClick={handleRetry}
           className="bg-transparent border-[#1F2937] hover:bg-[#111827] text-white gap-2"
         >
           <RotateCcw className="w-4 h-4" />
           Retry
         </Button>
         <Button
-          onClick={onNewTest}
+          onClick={handleNewTest}
           className="bg-[#22D3EE] text-[#060B14] hover:bg-[#22D3EE]/90 font-semibold gap-2"
         >
           <Play className="w-4 h-4" />

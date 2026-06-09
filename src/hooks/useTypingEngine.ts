@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { usePostHog } from '@posthog/react';
 import { TestState, TypingEngineReturn, Difficulty, Duration } from '../types';
 import { Language } from '../constants';
 import { SNIPPETS } from '../data/snippets/index';
@@ -58,6 +59,7 @@ function computeActiveLine(snippet: string[], currentIndex: number): number {
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 export function useTypingEngine({ language, difficulty, duration }: UseTypingEngineProps): TypingEngineReturn {
+  const posthog = usePostHog();
   const [testState, setTestState] = useState<TestState>('IDLE');
   const [snippet, setSnippet] = useState<string[]>([]);
   const [typedChars, setTypedChars] = useState<string[]>([]);
@@ -84,10 +86,12 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
   // Per-snippet refs for closure correctness
   const totalTypedRef = useRef<number>(0);
   const errorsRef = useRef<number>(0);
+  const snippetCountRef = useRef<number>(0);
 
   // Keep per-snippet refs in sync with state
   useEffect(() => { totalTypedRef.current = totalTyped; }, [totalTyped]);
   useEffect(() => { errorsRef.current = errors; }, [errors]);
+  useEffect(() => { snippetCountRef.current = snippetCount; }, [snippetCount]);
 
   // ── Reset shared state ──────────────────────────────────────────────────
   const resetState = useCallback(() => {
@@ -105,6 +109,7 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     setSnippetCount(0);
     totalTypedRef.current = 0;
     errorsRef.current = 0;
+    snippetCountRef.current = 0;
     sessionTotalTypedRef.current = 0;
     sessionErrorsRef.current = 0;
     startTimeRef.current = null;
@@ -135,6 +140,7 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     setTotalTyped(0);
     totalTypedRef.current = 0;
     errorsRef.current = 0;
+    snippetCountRef.current += 1;
     setSnippetCount(prev => prev + 1);
     // testState stays RUNNING, timer keeps counting
   }, [language, difficulty]);
@@ -177,12 +183,31 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
 
     const key = `${language}-${difficulty}`;
     const currentBest = localStorage.getItem(key);
-    if (!currentBest || net > parseFloat(currentBest)) {
+    const isNewBest = !currentBest || net > parseFloat(currentBest);
+    if (isNewBest) {
       localStorage.setItem(key, net.toString());
       setPersonalBest(net);
       setIsNewPersonalBest(true);
+      posthog?.capture('personal_best_achieved', {
+        language,
+        difficulty,
+        wpm: net,
+        previous_best: currentBest ? parseFloat(currentBest) : null,
+      });
     }
-  }, [duration, language, difficulty]);
+
+    posthog?.capture('test_completed', {
+      language,
+      difficulty,
+      duration,
+      wpm: net,
+      accuracy: Math.round(((total - errs) / total) * 100),
+      errors: errs,
+      total_chars_typed: total,
+      snippets_completed: snippetCountRef.current + 1,
+      is_personal_best: isNewBest,
+    });
+  }, [duration, language, difficulty, posthog]);
 
   // ── Countdown timer ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -229,6 +254,11 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
       if (testState === 'IDLE') {
         setTestState('RUNNING');
         startTimeRef.current = Date.now();
+        posthog?.capture('test_started', {
+          language,
+          difficulty,
+          duration,
+        });
       }
       // Try to match up to 4 leading spaces at the current position
       let consumed = 0;
@@ -272,6 +302,11 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     if (testState === 'IDLE') {
       setTestState('RUNNING');
       startTimeRef.current = Date.now();
+      posthog?.capture('test_started', {
+        language,
+        difficulty,
+        duration,
+      });
     }
 
     if (key === 'Backspace') {
@@ -332,7 +367,7 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     if (currentIndex + 1 === snippet.length) {
       advanceSnippet();
     }
-  }, [currentIndex, snippet, testState, loadSnippet, resetState, endTest, advanceSnippet]);
+  }, [currentIndex, snippet, testState, language, difficulty, duration, posthog, loadSnippet, resetState, endTest, advanceSnippet]);
 
   // ── Restart (same snippet) ──────────────────────────────────────────────
   const restart = useCallback(() => {

@@ -1,4 +1,5 @@
 import React from 'react';
+import { usePostHog } from '@posthog/react';
 import { Difficulty, Duration } from '../types';
 import { Language, DIFFICULTIES, DURATIONS } from '../constants';
 import { LanguageDropdown } from './LanguageDropdown';
@@ -23,16 +24,33 @@ export function ConfigBar({
   onDurationChange,
   disabled
 }: ConfigBarProps) {
+  const posthog = usePostHog();
+
+  const handleLanguageChange = (v: Language) => {
+    posthog?.capture('language_changed', { language: v, previous_language: language });
+    onLanguageChange(v);
+  };
+
+  const handleDifficultyChange = (diff: Difficulty) => {
+    posthog?.capture('difficulty_changed', { difficulty: diff, previous_difficulty: difficulty });
+    onDifficultyChange(diff);
+  };
+
+  const handleDurationChange = (dur: Duration) => {
+    posthog?.capture('duration_changed', { duration: dur, previous_duration: duration });
+    onDurationChange(dur);
+  };
+
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 w-full" data-testid="config-bar">
-      <LanguageDropdown value={language} onChange={onLanguageChange} disabled={disabled} />
+      <LanguageDropdown value={language} onChange={handleLanguageChange} disabled={disabled} />
 
       <div className="flex items-center gap-6">
         <div className="flex bg-surface p-1 rounded-full border border-border" data-testid="difficulty-toggle">
           {DIFFICULTIES.map(diff => (
             <button
               key={diff}
-              onClick={() => onDifficultyChange(diff)}
+              onClick={() => handleDifficultyChange(diff)}
               disabled={disabled}
               data-testid={`difficulty-btn-${diff}`}
               className={cn(
@@ -52,7 +70,7 @@ export function ConfigBar({
           {DURATIONS.map(dur => (
             <button
               key={dur}
-              onClick={() => onDurationChange(dur)}
+              onClick={() => handleDurationChange(dur)}
               disabled={disabled}
               data-testid={`duration-btn-${dur}`}
               className={cn(
