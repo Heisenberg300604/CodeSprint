@@ -163,8 +163,8 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
 
       {/* IDLE start hint overlay */}
       {testState === 'IDLE' && (
-        <div className="absolute inset-0 top-10 flex items-center justify-center pointer-events-none">
-          <span className="text-secondary-text/35 text-sm font-mono tracking-widest select-none">
+        <div className="absolute bottom-4 right-6 flex items-center justify-center pointer-events-none z-20">
+          <span className="text-secondary-text/35 text-xs font-mono tracking-widest select-none">
             start typing to begin
           </span>
         </div>
