@@ -71,15 +71,21 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
   const [activeLine, setActiveLine] = useState<number>(0);
   const [personalBest, setPersonalBest] = useState<number | null>(null);
   const [isNewPersonalBest, setIsNewPersonalBest] = useState<boolean>(false);
+  const [snippetCount, setSnippetCount] = useState<number>(0);
 
   const startTimeRef = useRef<number | null>(null);
   const endTimeRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<number | null>(null);
-  // Refs for endTest closure — avoids stale state captures
+
+  // Session-cumulative refs — persist across snippet auto-advances
+  const sessionTotalTypedRef = useRef<number>(0);
+  const sessionErrorsRef = useRef<number>(0);
+
+  // Per-snippet refs for closure correctness
   const totalTypedRef = useRef<number>(0);
   const errorsRef = useRef<number>(0);
 
-  // Keep refs in sync with state
+  // Keep per-snippet refs in sync with state
   useEffect(() => { totalTypedRef.current = totalTyped; }, [totalTyped]);
   useEffect(() => { errorsRef.current = errors; }, [errors]);
 
@@ -96,8 +102,11 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     setActiveLine(0);
     setIsNewPersonalBest(false);
     setTestState('IDLE');
+    setSnippetCount(0);
     totalTypedRef.current = 0;
     errorsRef.current = 0;
+    sessionTotalTypedRef.current = 0;
+    sessionErrorsRef.current = 0;
     startTimeRef.current = null;
     endTimeRef.current = null;
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
@@ -109,6 +118,26 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     setSnippet(text.split(''));
     resetState();
   }, [language, difficulty, resetState]);
+
+  // ── Advance to next snippet (mid-session, without resetting the timer) ──
+  const advanceSnippet = useCallback(() => {
+    // Accumulate session totals from the just-finished snippet
+    sessionTotalTypedRef.current += totalTypedRef.current;
+    sessionErrorsRef.current += errorsRef.current;
+
+    // Pick next snippet and reset per-snippet state only
+    const { text } = pickSnippet(language, difficulty);
+    setSnippet(text.split(''));
+    setTypedChars([]);
+    setCurrentIndex(0);
+    setActiveLine(0);
+    setErrors(0);
+    setTotalTyped(0);
+    totalTypedRef.current = 0;
+    errorsRef.current = 0;
+    setSnippetCount(prev => prev + 1);
+    // testState stays RUNNING, timer keeps counting
+  }, [language, difficulty]);
 
   useEffect(() => {
     loadSnippet();
@@ -130,8 +159,9 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
       ? (Date.now() - startTimeRef.current) / 60000
       : duration / 60;
 
-    const total = totalTypedRef.current;
-    const errs = errorsRef.current;
+    // Use session-cumulative totals (includes all completed snippets + current snippet progress)
+    const total = sessionTotalTypedRef.current + totalTypedRef.current;
+    const errs = sessionErrorsRef.current + errorsRef.current;
 
     // Gross WPM: total chars / 5 / elapsed
     const gross = Math.max(0, Math.round((total / 5) / elapsed));
@@ -140,6 +170,10 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
 
     setGrossWpm(gross);
     setWpm(net);
+
+    // Expose final session totals to results screen
+    setTotalTyped(total);
+    setErrors(errs);
 
     const key = `${language}-${difficulty}`;
     const currentBest = localStorage.getItem(key);
@@ -168,15 +202,15 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     }
   }, [testState, endTest]);
 
-  // ── Real-time WPM (Gross, updated every 300ms) ──────────────────────────
+  // ── Real-time WPM (updated every 300ms) ─────────────────────────────────
   useEffect(() => {
     if (testState === 'RUNNING' && startTimeRef.current) {
       const interval = setInterval(() => {
         const elapsed = (Date.now() - startTimeRef.current!) / 60000;
-        const total = totalTypedRef.current;
+        // Include accumulated session totals in live WPM
+        const total = sessionTotalTypedRef.current + totalTypedRef.current;
         const gross = Math.max(0, Math.round((total / 5) / (elapsed || 0.001)));
         setGrossWpm(gross);
-        // Live WPM display is Gross (MonkeyType convention)
         setWpm(gross);
       }, 300);
       return () => clearInterval(interval);
@@ -248,8 +282,7 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
           setActiveLine(computeActiveLine(snippet, next));
           return next;
         });
-        // Note: we do NOT decrement totalTyped — errors on deleted chars
-        // were never counted; backspace doesn't "uncorrect" WPM in Monkeytype style.
+        // Note: we do NOT decrement totalTyped — MonkeyType convention.
       }
       return;
     }
@@ -288,18 +321,18 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
       errorsRef.current += 1;
     }
 
-    // Recalculate accuracy: correct chars / total chars typed
+    // Recalculate live accuracy (session-cumulative)
     setAccuracy(() => {
-      const total = totalTypedRef.current;
-      const errs = errorsRef.current;
+      const total = sessionTotalTypedRef.current + totalTypedRef.current;
+      const errs = sessionErrorsRef.current + errorsRef.current;
       return total > 0 ? Math.round(((total - errs) / total) * 100) : 100;
     });
 
-    // Completed the entire snippet before timer ends
+    // Snippet complete — auto-advance to next snippet, keep session running
     if (currentIndex + 1 === snippet.length) {
-      endTest();
+      advanceSnippet();
     }
-  }, [currentIndex, snippet, testState, loadSnippet, resetState, endTest]);
+  }, [currentIndex, snippet, testState, loadSnippet, resetState, endTest, advanceSnippet]);
 
   // ── Restart (same snippet) ──────────────────────────────────────────────
   const restart = useCallback(() => {
@@ -323,5 +356,6 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     newTest: loadSnippet,
     personalBest,
     isNewPersonalBest,
+    snippetCount,
   };
 }

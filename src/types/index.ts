@@ -19,4 +19,5 @@ export interface TypingEngineReturn {
   newTest: () => void;
   personalBest: number | null;
   isNewPersonalBest: boolean;
+  snippetCount: number;
 }

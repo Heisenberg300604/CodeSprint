@@ -25,6 +25,13 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
     }
   }, [testState]);
 
+  // Re-focus whenever a new snippet loads (snippet array reference changes)
+  useEffect(() => {
+    if (testState === 'RUNNING') {
+      inputRef.current?.focus();
+    }
+  }, [snippet, testState]);
+
   const handleContainerClick = () => {
     inputRef.current?.focus();
   };
@@ -51,8 +58,18 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
   }, [snippet]);
 
   // translateY so the active line sits at a fixed vertical position
-  // We offset by (activeLine - LINES_ABOVE) lines, clamped at 0
   const translateY = -Math.max(0, activeLine - LINES_ABOVE) * LINE_HEIGHT_PX;
+
+  // Content-aware height:
+  //  pt-14 (56px title bar space) + all lines + pb-4 (16px)
+  //  capped between 200px min and 520px max
+  const TITLE_BAR_PT = 56; // pt-14
+  const BOTTOM_PB    = 16; // pb-4
+  const naturalContentHeight = lines.length * LINE_HEIGHT_PX;
+  const viewportHeight = Math.min(
+    Math.max(naturalContentHeight + TITLE_BAR_PT + BOTTOM_PB, 200),
+    520,
+  );
 
   const renderedLines = useMemo(() => {
     return lines.map((line, lineIdx) => {
@@ -117,6 +134,7 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
         'relative w-full rounded-xl bg-surface border border-border overflow-hidden transition-shadow duration-300',
         testState === 'RUNNING' && 'ring-1 ring-accent/20 shadow-[0_0_30px_rgba(34,211,238,0.05)]',
       )}
+      style={{ height: viewportHeight, transition: 'height 250ms ease, box-shadow 300ms ease' }}
       onClick={handleContainerClick}
       data-testid="typing-area"
     >
@@ -127,10 +145,9 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
         <div className="w-3 h-3 rounded-full bg-success/80" />
       </div>
 
-      {/* Fixed-height viewport — no scrollbar */}
+      {/* Viewport — sized to match outer container */}
       <div
-        className="pt-14 pb-4 px-8 overflow-hidden select-none"
-        style={{ height: 400 }}
+        className="h-full pt-14 pb-4 px-8 overflow-hidden select-none"
       >
         {/* Inner block slides up via translateY */}
         <div
@@ -143,6 +160,15 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
           {renderedLines}
         </div>
       </div>
+
+      {/* IDLE start hint overlay */}
+      {testState === 'IDLE' && (
+        <div className="absolute inset-0 top-10 flex items-center justify-center pointer-events-none">
+          <span className="text-secondary-text/35 text-sm font-mono tracking-widest select-none">
+            start typing to begin
+          </span>
+        </div>
+      )}
 
       {/* Hidden focus sink */}
       <textarea

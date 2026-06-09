@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { ConfigBar } from './ConfigBar';
 import { MetricsRow } from './MetricsRow';
 import { TypingArea } from './TypingArea';
@@ -18,7 +19,6 @@ export default function CodeSprintApp() {
     typedChars,
     currentIndex,
     wpm,
-    grossWpm,
     accuracy,
     timeLeft,
     errors,
@@ -27,7 +27,8 @@ export default function CodeSprintApp() {
     handleKeyDown,
     restart,
     newTest,
-    isNewPersonalBest
+    isNewPersonalBest,
+    snippetCount,
   } = useTypingEngine({
     language,
     difficulty,
@@ -54,11 +55,11 @@ export default function CodeSprintApp() {
   }, [testState, newTest, restart]);
 
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center py-12 px-4 sm:px-8 w-full max-w-[900px] mx-auto">
-      
+    <div className="min-h-[100dvh] flex flex-col items-center py-8 px-4 sm:px-8 w-full max-w-[900px] mx-auto">
+
       {/* Header / Config area */}
-      <motion.div 
-        className="w-full flex flex-col mb-8 transition-opacity duration-300"
+      <motion.div
+        className="w-full flex flex-col mb-4 transition-opacity duration-300"
         style={{ opacity: testState === 'RUNNING' ? 0.3 : 1 }}
       >
         <div className="flex items-center justify-between mb-2">
@@ -85,9 +86,15 @@ export default function CodeSprintApp() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <MetricsRow wpm={wpm} accuracy={accuracy} timeLeft={timeLeft} />
+              <MetricsRow
+                wpm={wpm}
+                accuracy={accuracy}
+                timeLeft={timeLeft}
+                testState={testState}
+                snippetCount={snippetCount}
+              />
             </motion.div>
-            
+
             <TypingArea
               snippet={snippet}
               typedChars={typedChars}
@@ -106,6 +113,7 @@ export default function CodeSprintApp() {
             duration={duration}
             language={language}
             isNewPersonalBest={isNewPersonalBest}
+            snippetCount={snippetCount}
             onRetry={restart}
             onNewTest={newTest}
           />
@@ -113,19 +121,16 @@ export default function CodeSprintApp() {
       </div>
 
       {/* Footer Hints */}
-      <div 
-        className="mt-12 text-center text-secondary-text font-mono text-xs transition-opacity duration-300"
+      <div
+        className="mt-6 text-center text-secondary-text font-mono text-xs transition-opacity duration-300"
         style={{ opacity: testState === 'RUNNING' ? 0 : 1 }}
       >
         {testState === 'FINISHED' ? (
-          <p>Tab — new test &middot; Esc — retry test</p>
+          <p>Tab — new test &middot; Esc — retry</p>
         ) : (
-          <p>Ctrl+Shift+R or Esc — restart test &middot; Tab — skip test &middot; Enter — type</p>
+          <p>Esc — restart &middot; Tab — new snippet</p>
         )}
       </div>
     </div>
   );
 }
-
-// Simple framer-motion polyfill/import for CodeSprintApp since I used it above
-import { motion } from 'framer-motion';

@@ -43,33 +43,58 @@ export function LanguageDropdown({ value, onChange, disabled }: LanguageDropdown
       </PopoverTrigger>
       <PopoverContent className="w-[200px] p-0 bg-surface border-border">
         <Command className="bg-surface">
-          <CommandInput placeholder="Search language..." className="text-primary-text" data-testid="language-search-input" />
+          <CommandInput
+            placeholder="Search language..."
+            className="text-primary-text border-b border-border"
+            data-testid="language-search-input"
+          />
           <CommandList>
-            <CommandEmpty className="text-secondary-text p-2 text-sm text-center">No language found.</CommandEmpty>
+            <CommandEmpty className="text-secondary-text p-3 text-sm text-center">
+              No language found.
+            </CommandEmpty>
             <CommandGroup>
-              {LANGUAGES.map((language) => (
-                <CommandItem
-                  key={language}
-                  value={language}
-                  onSelect={(currentValue) => {
-                    const selected = LANGUAGES.find((l) => l.toLowerCase() === currentValue.toLowerCase());
-                    if (selected) {
-                      onChange(selected);
-                    }
-                    setOpen(false);
-                  }}
-                  className="text-primary-text hover:bg-secondary-bg focus:bg-secondary-bg cursor-pointer"
-                  data-testid={`language-item-${language}`}
-                >
-                  <Check
+              {LANGUAGES.map((language) => {
+                const isSelected = value === language;
+                return (
+                  <CommandItem
+                    key={language}
+                    value={language}
+                    onSelect={(currentValue) => {
+                      const selected = LANGUAGES.find(
+                        (l) => l.toLowerCase() === currentValue.toLowerCase()
+                      );
+                      if (selected) {
+                        onChange(selected);
+                      }
+                      setOpen(false);
+                    }}
                     className={cn(
-                      "mr-2 h-4 w-4 text-accent",
-                      value === language ? "opacity-100" : "opacity-0"
+                      // Base styles — always applied
+                      "cursor-pointer font-mono text-sm px-3 py-2 rounded-md mx-1 my-0.5",
+                      // Default (non-selected) state
+                      "text-secondary-text",
+                      // Hover state — subtle surface lift, NOT using accent background
+                      "hover:bg-border hover:text-primary-text",
+                      // Selected state — slightly lighter bg, primary text, accent checkmark handled below
+                      // Override shadcn/cmdk's default [aria-selected] cyan background
+                      isSelected
+                        ? "bg-secondary-bg text-primary-text"
+                        : "",
+                      // Force override any cmdk aria-selected styles that would apply cyan
+                      "data-[selected=true]:bg-secondary-bg data-[selected=true]:text-primary-text",
                     )}
-                  />
-                  {language}
-                </CommandItem>
-              ))}
+                    data-testid={`language-item-${language}`}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-3.5 w-3.5 text-accent flex-shrink-0",
+                        isSelected ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {language}
+                  </CommandItem>
+                );
+              })}
             </CommandGroup>
           </CommandList>
         </Command>
