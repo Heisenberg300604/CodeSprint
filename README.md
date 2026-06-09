@@ -159,7 +159,8 @@ We welcome contributions! Please adhere to the guidelines set in `Agents.md` reg
 1. Create a feature branch from `main`.
 2. Ensure TypeScript compiles without errors (`npx tsc --noEmit`).
 3. Ensure no ESLint warnings are introduced (`npm run lint`).
-4. Submit a PR outlining the *what* and *why* of your changes.
+4. Verify that the production build compiles successfully by running `npm run build`.
+5. Submit a PR outlining the *what* and *why* of your changes.
 
 ---
 
