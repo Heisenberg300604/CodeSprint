@@ -227,16 +227,20 @@ export function useTypingEngine({ language, difficulty, duration }: UseTypingEng
     }
   }, [testState, endTest]);
 
-  // ── Real-time WPM (updated every 300ms) ─────────────────────────────────
+  // ── Real-time WPM (updated every 300ms) — net WPM (errors deducted) ──
   useEffect(() => {
     if (testState === 'RUNNING' && startTimeRef.current) {
       const interval = setInterval(() => {
         const elapsed = (Date.now() - startTimeRef.current!) / 60000;
         // Include accumulated session totals in live WPM
         const total = sessionTotalTypedRef.current + totalTypedRef.current;
+        const errs  = sessionErrorsRef.current + errorsRef.current;
+        // Gross WPM (total keystrokes / 5 / elapsed)
         const gross = Math.max(0, Math.round((total / 5) / (elapsed || 0.001)));
+        // Net WPM (correct chars / 5 / elapsed) — matches scoring on results screen
+        const net   = Math.max(0, Math.round(((total - errs) / 5) / (elapsed || 0.001)));
         setGrossWpm(gross);
-        setWpm(gross);
+        setWpm(net);
       }, 300);
       return () => clearInterval(interval);
     }

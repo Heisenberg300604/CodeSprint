@@ -68,3 +68,14 @@
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/* ── Hide scrollbar on the typing viewport (scroll is programmatic only) ── */
+.typing-viewport {
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* IE / Edge legacy */
+  scroll-behavior: smooth;        /* smooth programmatic scroll */
+}
+.typing-viewport::-webkit-scrollbar {
+  display: none;                  /* Chrome / Safari / Opera */
+}
+

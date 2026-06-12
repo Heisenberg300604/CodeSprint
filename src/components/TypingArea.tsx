@@ -11,21 +11,27 @@ interface TypingAreaProps {
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
-// Height of one line in px — must match leading-[2] at text-[18px]
+// Height of one line in px — must match the font-size + line-height below
 const LINE_HEIGHT_PX = 40;
 // How many completed lines to keep visible above the active line
-const LINES_ABOVE = 2;
+const LINES_ABOVE = 1;
+// macOS title bar height in px (h-10 = 40px)
+const TITLE_BAR_H = 40;
+// Maximum visible code lines in the viewport (scrolls for longer snippets)
+const MAX_VISIBLE_LINES = 5;
 
 export function TypingArea({ snippet, typedChars, currentIndex, activeLine, testState, onKeyDown }: TypingAreaProps) {
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef    = useRef<HTMLTextAreaElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
+  // ── Focus management ─────────────────────────────────────────────────────
   useEffect(() => {
     if (testState !== 'FINISHED') {
       inputRef.current?.focus();
     }
   }, [testState]);
 
-  // Re-focus whenever a new snippet loads (snippet array reference changes)
+  // Re-focus when a new snippet loads mid-session
   useEffect(() => {
     if (testState === 'RUNNING') {
       inputRef.current?.focus();
@@ -36,7 +42,7 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
     inputRef.current?.focus();
   };
 
-  // Split snippet into lines for rendering
+  // ── Split snippet into lines ──────────────────────────────────────────────
   const lines = useMemo(() => {
     const result: Array<{ chars: string[]; startIndex: number }> = [];
     let currentLine: string[] = [];
@@ -57,20 +63,23 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
     return result;
   }, [snippet]);
 
-  // translateY so the active line sits at a fixed vertical position
-  const translateY = -Math.max(0, activeLine - LINES_ABOVE) * LINE_HEIGHT_PX;
+  // ── Programmatic scroll — keeps active line in view ───────────────────────
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const scrollTarget = Math.max(0, activeLine - LINES_ABOVE) * LINE_HEIGHT_PX;
+    el.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+  }, [activeLine]);
 
-  // Content-aware height:
-  //  pt-14 (56px title bar space) + all lines + pb-4 (16px)
-  //  capped between 200px min and 520px max
-  const TITLE_BAR_PT = 56; // pt-14
-  const BOTTOM_PB    = 16; // pb-4
-  const naturalContentHeight = lines.length * LINE_HEIGHT_PX;
-  const viewportHeight = Math.min(
-    Math.max(naturalContentHeight + TITLE_BAR_PT + BOTTOM_PB, 200),
-    520,
+  // ── Container height: title bar + visible code lines + bottom padding ────
+  // Capped at MAX_VISIBLE_LINES so long snippets don't make the box too tall.
+  const visibleLines = Math.min(lines.length, MAX_VISIBLE_LINES);
+  const totalH = Math.max(
+    TITLE_BAR_H + visibleLines * LINE_HEIGHT_PX + 32, // 32 = top gap + bottom pad
+    200,
   );
 
+  // ── Render lines ──────────────────────────────────────────────────────────
   const renderedLines = useMemo(() => {
     return lines.map((line, lineIdx) => {
       const lineChars = line.chars.map((char, charOffset) => {
@@ -80,8 +89,8 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
         if (absoluteIdx < typedChars.length) {
           stateClass =
             typedChars[absoluteIdx] === char
-              ? 'text-primary-text'   // correct
-              : 'text-error bg-error/10 border-b border-error'; // wrong
+              ? 'text-primary-text'                               // correct
+              : 'text-error bg-error/10 border-b border-error';  // wrong
         }
 
         const isCursor = absoluteIdx === currentIndex && testState !== 'FINISHED';
@@ -101,9 +110,10 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
         );
       });
 
-      // Newline character at end of line (except last line)
-      const newlineIdx = line.startIndex + line.chars.length;
-      const isNewlineCursor = newlineIdx === currentIndex && testState !== 'FINISHED' && lineIdx < lines.length - 1;
+      // Newline indicator (↵) at end of each non-last line
+      const newlineIdx      = line.startIndex + line.chars.length;
+      const isNewlineCursor =
+        newlineIdx === currentIndex && testState !== 'FINISHED' && lineIdx < lines.length - 1;
 
       return (
         <div
@@ -134,34 +144,33 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
         'relative w-full rounded-xl bg-surface border border-border overflow-hidden transition-shadow duration-300',
         testState === 'RUNNING' && 'ring-1 ring-accent/20 shadow-[0_0_30px_rgba(34,211,238,0.05)]',
       )}
-      style={{ height: viewportHeight, transition: 'height 250ms ease, box-shadow 300ms ease' }}
+      style={{ height: totalH }}
       onClick={handleContainerClick}
       data-testid="typing-area"
     >
-      {/* macOS window bar */}
-      <div className="absolute top-0 left-0 w-full h-10 bg-surface/50 border-b border-border flex items-center px-4 gap-2 select-none z-10">
+      {/* ── macOS window bar ─────────────────────────────────────────────────
+          Fully opaque (bg-surface) so sliding code never bleeds through.
+          z-30 ensures it always sits on top of the scrolling content.       */}
+      <div className="absolute top-0 left-0 w-full h-10 bg-surface border-b border-border flex items-center px-4 gap-2 select-none z-30">
         <div className="w-3 h-3 rounded-full bg-error/80" />
         <div className="w-3 h-3 rounded-full bg-warning/80" />
         <div className="w-3 h-3 rounded-full bg-success/80" />
       </div>
 
-      {/* Viewport — sized to match outer container */}
+      {/* ── Scrollable code viewport ─────────────────────────────────────────
+          Uses scrollTop (not translateY) for reliable browser-level clipping.
+          The scrollbar is hidden via CSS; scrolling is programmatic only.    */}
       <div
-        className="h-full pt-14 pb-4 px-8 overflow-hidden select-none"
+        ref={viewportRef}
+        className="absolute inset-0 pt-14 pb-4 px-8 select-none typing-viewport"
+        style={{ overflowY: 'scroll' }}
       >
-        {/* Inner block slides up via translateY */}
-        <div
-          style={{
-            transform: `translateY(${translateY}px)`,
-            transition: 'transform 150ms ease',
-          }}
-          className="font-mono text-[18px] tracking-wide"
-        >
+        <div className="font-mono text-[18px] tracking-wide">
           {renderedLines}
         </div>
       </div>
 
-      {/* IDLE start hint overlay */}
+      {/* ── IDLE start hint ──────────────────────────────────────────────── */}
       {testState === 'IDLE' && (
         <div className="absolute bottom-4 right-6 flex items-center justify-center pointer-events-none z-20">
           <span className="text-secondary-text/35 text-xs font-mono tracking-widest select-none">
@@ -170,7 +179,7 @@ export function TypingArea({ snippet, typedChars, currentIndex, activeLine, test
         </div>
       )}
 
-      {/* Hidden focus sink */}
+      {/* ── Hidden focus sink (captures all keystrokes) ──────────────────── */}
       <textarea
         ref={inputRef}
         className="absolute top-0 left-0 w-0 h-0 opacity-0 pointer-events-none"
